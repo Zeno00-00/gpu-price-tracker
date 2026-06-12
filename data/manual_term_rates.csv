@@ -1,0 +1,2 @@
+date,gpu_model,tenor,rate_usd_per_gpu_hr,source
+2026-01-31,H100,1y,2.00,SemiAnalysis (1y H100 contract broke above $2/hr late Jan 2026 - VERIFY exact level before relying)

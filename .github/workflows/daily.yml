@@ -1,0 +1,32 @@
+name: Daily GPU price pull
+on:
+  schedule:
+    - cron: "30 13 * * *"   # 13:30 UTC = 9:30am ET daily
+  workflow_dispatch: {}      # allow manual runs from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests boto3
+      - name: Run scraper
+        env:
+          LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: python scraper.py
+      - name: Commit data
+        run: |
+          git config user.name "gpu-price-bot"
+          git config user.email "actions@github.com"
+          git add data/gpu_prices.csv
+          git diff --cached --quiet || git commit -m "Daily price pull $(date -u +%F)"
+          git push
