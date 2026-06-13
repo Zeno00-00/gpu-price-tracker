@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPU Rental Price Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --red: #f85149;
+    --accent: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px 16px 48px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .sub a { color: var(--accent); text-decoration: none; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .tab {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 14px;
+  }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: #0d1117; font-weight: 600; }
+  .toggle { margin-left: auto; color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+  .card .value { font-size: 24px; font-weight: 700; }
+  .card .detail { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { font-size: 14px; margin: 0 0 12px; color: var(--muted); font-weight: 600; }
+  .chart-box { position: relative; height: 360px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .footnote { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  #status { color: var(--muted); padding: 40px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>GPU Rental Price Tracker</h1>
+  <div class="sub">
+    Posted on-demand/spot marketplace rates, USD per GPU-hour, scraped daily at 9:30am ET.
+    Direction and spread matter more than absolute level &mdash;
+    <a href="https://github.com/Zeno00-00/gpu-price-tracker" target="_blank" rel="noopener">source &amp; caveats</a>.
+  </div>
+
+  <div id="status">Loading price data&hellip;</div>
+
+  <div id="app" style="display:none">
+    <div class="tabs" id="gpuTabs"></div>
+    <div class="cards" id="cards"></div>
+
+    <div class="panel">
+      <h2 id="chartTitle">Price history</h2>
+      <div class="chart-box"><canvas id="chart"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h2 id="tableTitle">Latest snapshot</h2>
+      <table>
+        <thead><tr>
+          <th>Provider</th><th>Tier</th>
+          <th class="num">$ / GPU-hr</th><th class="num"># offers</th>
+        </tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+
+    <p class="footnote">
+      Community tiers (consumer-grade hardware) are excluded from the spot median
+      and hidden by default &mdash; they are not comparable to dedicated datacenter capacity.
+      Spread = spot median &minus; 1-year contract rate from
+      <code>data/manual_term_rates.csv</code>; positive = backwardation
+      (demand-constrained), negative = contango (supply outrunning spot demand).
+    </p>
+  </div>
+</div>
+
+<script>
+const GPUS = ["H100", "H200", "B200", "A100"];
+const PALETTE = ["#58a6ff", "#3fb950", "#d29922", "#f85149", "#bc8cff", "#39c5cf", "#ff7b72", "#7ee787"];
+
+let spotRows = [], termRows = [], chart = null;
+let selectedGpu = "H100", showCommunity = false;
+
+function parseCSV(text) {
+  const rows = []; let row = [], field = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); if (row.some(f => f !== "")) rows.push(row); row = []; field = ""; }
+    else if (c !== "\r") field += c;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  const head = rows.shift();
+  return rows.map(r => Object.fromEntries(head.map((h, i) => [h, r[i]])));
+}
+
+const isCommunity = r => r.tier.includes("community");
+const seriesLabel = r => `${r.provider} · ${r.tier.replace(/_/g, " ")}`;
+const median = a => {
+  const v = [...a].sort((x, y) => x - y), m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
+
+function spotMedian(gpu, date) {
+  const prices = spotRows
+    .filter(r => r.gpu_model === gpu && r.date === date && !isCommunity(r))
+    .map(r => parseFloat(r.price_usd_per_gpu_hr));
+  return prices.length ? median(prices) : null;
+}
+
+function render() {
+  const rows = spotRows.filter(r =>
+    r.gpu_model === selectedGpu && (showCommunity || !isCommunity(r)));
+  const dates = [...new Set(rows.map(r => r.date))].sort();
+  const latest = dates[dates.length - 1];
+
+  // --- stat cards ---
+  const spot = spotMedian(selectedGpu, latest);
+  let cards = "";
+  if (spot !== null) {
+    const prev = dates.length > 1 ? spotMedian(selectedGpu, dates[dates.length - 2]) : null;
+    let delta = "";
+    if (prev) {
+      const pct = (spot - prev) / prev * 100;
+      delta = `<span class="${pct >= 0 ? "pos" : "neg"}">${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%</span> vs prior day`;
+    } else delta = "first observation";
+    cards += `<div class="card"><div class="label">Spot median (excl. community)</div>
+      <div class="value">$${spot.toFixed(2)}</div><div class="detail">${latest} &mdash; ${delta}</div></div>`;
+  }
+  const term = termRows
+    .filter(r => r.gpu_model === selectedGpu && r.tenor === "1y")
+    .sort((a, b) => a.date.localeCompare(b.date)).pop();
+  if (term && spot !== null) {
+    const t = parseFloat(term.rate_usd_per_gpu_hr);
+    const spread = spot - t, pct = spread / t * 100;
+    cards += `<div class="card"><div class="label">1y contract rate (manual)</div>
+      <div class="value">$${t.toFixed(2)}</div><div class="detail">as of ${term.date}</div></div>`;
+    cards += `<div class="card"><div class="label">Spot &minus; term spread</div>
+      <div class="value ${spread >= 0 ? "pos" : "neg"}">${spread >= 0 ? "+" : ""}${spread.toFixed(2)} (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%)</div>
+      <div class="detail">${spread >= 0 ? "Backwardation: demand-constrained" : "Contango: supply outrunning demand"}</div></div>`;
+  }
+  document.getElementById("cards").innerHTML = cards;
+
+  // --- chart: one line per provider+tier series ---
+  const byKey = {};
+  for (const r of rows) {
+    const k = seriesLabel(r);
+    (byKey[k] = byKey[k] || {})[r.date] = parseFloat(r.price_usd_per_gpu_hr);
+  }
+  const datasets = Object.keys(byKey).sort().map((k, i) => ({
+    label: k,
+    data: dates.map(d => byKey[k][d] ?? null),
+    borderColor: PALETTE[i % PALETTE.length],
+    backgroundColor: PALETTE[i % PALETTE.length],
+    spanGaps: true, tension: 0.2, pointRadius: 3,
+  }));
+  document.getElementById("chartTitle").textContent =
+    `${selectedGpu} price history ($ / GPU-hr)`;
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("chart"), {
+    type: "line",
+    data: { labels: dates, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { color: "#e6edf3" } } },
+      scales: {
+        x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+        y: { ticks: { color: "#8b949e", callback: v => "$" + v }, grid: { color: "#21262d" } },
+      },
+    },
+  });
+
+  // --- latest snapshot table ---
+  document.getElementById("tableTitle").textContent = `Latest snapshot — ${latest}`;
+  document.getElementById("tableBody").innerHTML = rows
+    .filter(r => r.date === latest)
+    .sort((a, b) => parseFloat(a.price_usd_per_gpu_hr) - parseFloat(b.price_usd_per_gpu_hr))
+    .map(r => `<tr><td>${r.provider}</td><td>${r.tier.replace(/_/g, " ")}</td>
+      <td class="num">$${parseFloat(r.price_usd_per_gpu_hr).toFixed(2)}</td>
+      <td class="num">${r.n_offers}</td></tr>`).join("");
+}
+
+function buildTabs() {
+  const tabs = document.getElementById("gpuTabs");
+  tabs.innerHTML = GPUS.map(g =>
+    `<button class="tab${g === selectedGpu ? " active" : ""}" data-gpu="${g}">${g}</button>`).join("") +
+    `<label class="toggle"><input type="checkbox" id="commToggle"> include community tiers</label>`;
+  tabs.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => {
+    selectedGpu = b.dataset.gpu;
+    tabs.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === b));
+    render();
+  }));
+  document.getElementById("commToggle").addEventListener("change", e => {
+    showCommunity = e.target.checked;
+    render();
+  });
+}
+
+async function init() {
+  try {
+    const [spotText, termText] = await Promise.all([
+      fetch("data/gpu_prices.csv", { cache: "no-store" }).then(r => {
+        if (!r.ok) throw new Error("gpu_prices.csv: HTTP " + r.status);
+        return r.text();
+      }),
+      fetch("data/manual_term_rates.csv", { cache: "no-store" })
+        .then(r => r.ok ? r.text() : "").catch(() => ""),
+    ]);
+    spotRows = parseCSV(spotText);
+    termRows = termText ? parseCSV(termText) : [];
+    document.getElementById("status").style.display = "none";
+    document.getElementById("app").style.display = "";
+    buildTabs();
+    render();
+  } catch (e) {
+    document.getElementById("status").textContent = "Failed to load data: " + e.message;
+  }
+}
+init();
+</script>
+</body>
+</html>

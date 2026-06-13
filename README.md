@@ -3,6 +3,10 @@
 Daily scraper for posted GPU rental rates (H100 / H200 / B200 / A100),
 normalized to USD per GPU-hour, plus a spot-vs-term spread calculator.
 
+**Live dashboard:** https://zeno00-00.github.io/gpu-price-tracker/ —
+price history charts, latest snapshot, and the spot-vs-term spread,
+updated automatically after each daily scrape.
+
 ## What this measures (and doesn't)
 
 This tracks **posted on-demand/spot marketplace rates** — the marginal,
