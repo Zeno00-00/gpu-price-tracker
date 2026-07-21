@@ -464,3 +464,15 @@ date,provider,gpu_model,tier,price_usd_per_gpu_hr,n_offers,notes
 2026-07-20,runpod,B200,community_cloud,5.98,1,community tier - not comparable to dedicated
 2026-07-20,runpod,A100,secure_cloud,1.44,3,datacenter-grade tier
 2026-07-20,runpod,A100,community_cloud,1.19,3,community tier - not comparable to dedicated
+2026-07-21,vast.ai,H100,marketplace_on_demand,2.3559,22,median across verified rentable offers
+2026-07-21,vast.ai,H200,marketplace_on_demand,4.2111,13,median across verified rentable offers
+2026-07-21,vast.ai,B200,marketplace_on_demand,7.4138,10,median across verified rentable offers
+2026-07-21,vast.ai,A100,marketplace_on_demand,0.8281,27,median across verified rentable offers
+2026-07-21,runpod,H100,secure_cloud,2.99,3,datacenter-grade tier
+2026-07-21,runpod,H100,community_cloud,2.59,3,community tier - not comparable to dedicated
+2026-07-21,runpod,H200,secure_cloud,4.09,2,datacenter-grade tier
+2026-07-21,runpod,H200,community_cloud,2.045,2,community tier - not comparable to dedicated
+2026-07-21,runpod,B200,secure_cloud,5.89,1,datacenter-grade tier
+2026-07-21,runpod,B200,community_cloud,5.98,1,community tier - not comparable to dedicated
+2026-07-21,runpod,A100,secure_cloud,1.44,3,datacenter-grade tier
+2026-07-21,runpod,A100,community_cloud,1.19,3,community tier - not comparable to dedicated
