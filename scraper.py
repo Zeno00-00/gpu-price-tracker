@@ -8,6 +8,7 @@ normalizes to USD per GPU-hour, and appends to a daily CSV.
 Providers (no API key required):
   - Vast.ai      (marketplace search API)
   - RunPod       (public GraphQL pricing endpoint)
+  - Runcrate     (public JSON pricing feed)
 
 Providers (optional, key required):
   - Lambda Labs  (set LAMBDA_API_KEY env var; free account)
@@ -186,6 +187,48 @@ def fetch_lambda():
 
 
 # ---------------------------------------------------------------------------
+# Runcrate - public JSON pricing feed, no auth.
+# min_price_hr is the live on-demand price for one GPU for one hour.
+# available_options is how many offers are live; the feed can keep a stale
+# price for an out-of-stock type, so types with 0 are skipped.
+# The feed does not say SXM vs PCIe, so H100 is skipped on purpose. The other
+# target models are mapped by feed type; H200 has two types (H200 and H200 NVL)
+# and A100 has two memory sizes, and like the RunPod module the row is the
+# median across the matching live types.
+# ---------------------------------------------------------------------------
+
+RUNCRATE_TYPES = {
+    "B200": "B200",
+    "H200": "H200",
+    "H200_nvl": "H200",
+    "A100": "A100",
+    "A100_80G": "A100",
+}
+
+def fetch_runcrate():
+    rows = []
+    try:
+        r = requests.get("https://www.runcrate.ai/api/gpu-pricing",
+                         headers=HEADERS, timeout=TIMEOUT)
+        r.raise_for_status()
+        gpus = r.json()["gpus"]
+    except Exception as e:
+        print(f"[runcrate] FAILED - {e}", file=sys.stderr)
+        return rows
+
+    for gpu in TARGET_GPUS:
+        matches = [g for g in gpus
+                   if RUNCRATE_TYPES.get(g.get("gpu_type")) == gpu
+                   and (g.get("available_options") or 0) >= 1]
+        price = median_or_none([g.get("min_price_hr") for g in matches])
+        if price:
+            rows.append(make_row("runcrate", gpu, "on_demand", price,
+                                 len(matches),
+                                 "live min price per feed type, median across types"))
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # AWS spot - optional, requires boto3 + AWS credentials
 # p5.48xlarge = 8x H100 | p5e/p5en.48xlarge = 8x H200 | p6-b200.48xlarge = 8x B200
 # ---------------------------------------------------------------------------
@@ -236,7 +279,8 @@ def fetch_aws_spot():
 def main():
     DATA_DIR.mkdir(exist_ok=True)
     all_rows = []
-    for fn in (fetch_vastai, fetch_runpod, fetch_lambda, fetch_aws_spot):
+    for fn in (fetch_vastai, fetch_runpod, fetch_lambda, fetch_runcrate,
+               fetch_aws_spot):
         all_rows.extend(fn())
 
     if not all_rows:
