@@ -36,7 +36,7 @@ python spread.py H100      # computes spread vs manual term rates
    - `LAMBDA_API_KEY` — free Lambda Labs account → API key
    - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — for p5/p6 spot prices
 
-No secrets are required for the Vast.ai and RunPod modules.
+No secrets are required for the Vast.ai, RunPod and Runcrate modules.
 
 ## Providers
 
@@ -45,6 +45,7 @@ No secrets are required for the Vast.ai and RunPod modules.
 | Vast.ai | none | `console.vast.ai/api/v0/bundles` | Marketplace median; community hardware — cheapest tier |
 | RunPod | none* | `api.runpod.io/graphql` | Secure vs community tiers logged separately |
 | Lambda | API key | `cloud.lambdalabs.com/api/v1/instance-types` | Posted on-demand, datacenter grade |
+| Runcrate | none | `www.runcrate.ai/api/gpu-pricing` | Posted on-demand, live offers only; H100 skipped (feed does not say SXM or PCIe) |
 | AWS | creds | EC2 `describe_spot_price_history` | True spot auction prices, p5/p5e/p6-b200 |
 
 *RunPod's public pricing query has historically worked without a key; if it
